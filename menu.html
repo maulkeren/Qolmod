@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>QOLMOD</title>
+
+<style>
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html, body {
+    margin: 0;
+    height: 100%;
+    background: transparent;
+    overflow: hidden;
+    color: white;
+    font-family: Arial, sans-serif;
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+[hidden] { display: none !important; }
+
+/* TOMBOL QM */
+#qm {
+    width: 56px;
+    height: 56px;
+    margin: 4px;
+    background: #12384a;
+    color: cyan;
+    border: 1px solid cyan;
+    border-radius: 10px;
+    font-weight: bold;
+    touch-action: none;
+}
+
+/* PANEL MENU */
+#menu {
+    position: relative;
+    height: 100%;
+    background: #101b2b;
+    border: 1px solid cyan;
+    border-radius: 12px;
+    padding: 10px;
+    display: flex;
+    flex-direction: column;
+}
+
+#header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: #17364a;
+    padding: 10px;
+    border-radius: 8px;
+    color: cyan;
+    font-weight: bold;
+    touch-action: none;
+}
+
+#header .hint { margin-left: auto; font-size: 11px; opacity: .7; }
+
+#closeBtn {
+    background: #a83232;
+    color: white;
+    border: none;
+    border-radius: 5px;
+    padding: 5px 10px;
+}
+
+#tabs {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+    margin-top: 10px;
+}
+
+#title { margin: 10px 0 8px; font-size: 18px; }
+
+#features {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    grid-auto-rows: min-content;
+    gap: 7px;
+    overflow-y: auto;
+}
+
+.toggle {
+    width: 100%;
+    min-width: 0;
+    padding: 9px 5px;
+    border-radius: 8px;
+    border: 1px solid #34566a;
+    background: #172b3b;
+    color: white;
+    font-size: 11px;
+}
+.toggle.active { background: cyan; color: black; }
+.toggle.action { border-color: cyan; color: cyan; }
+
+#toast {
+    position: absolute;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #17364a;
+    border: 1px solid cyan;
+    color: cyan;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity .2s;
+}
+#toast.show { opacity: 1; }
+</style>
+</head>
+
+<body>
+
+<button id="qm">QM</button>
+
+<div id="menu" hidden>
+    <div id="header">
+        <span>QOLMOD V1</span>
+        <span class="hint">DRAG ME</span>
+        <button id="closeBtn">X</button>
+    </div>
+
+    <div id="tabs"></div>
+    <h2 id="title">VISUAL</h2>
+    <div id="features"></div>
+    <div id="toast"></div>
+</div>
+
+<script>
+// Jembatan ke Android. Kalau dibuka di browser biasa, dipakai versi kosong.
+const bridge = window.Android || { setExpanded() {}, moveBy() {} };
+
+const categories = {
+    VISUAL: [
+        "Show Line", "Show Box", "Show Bones",
+        "Show Health", "Show Name", "Show Distance",
+        "Show Team ID", "Show Grenade", "Show DrawFov",
+        "Hide Damage", "Show FPS"
+    ],
+    RAGEBOT: [
+        "Enable All", "Aimbot", "Aim Collider",
+        "Visible Target Only", "Ignore Knock",
+        "Ignore Enemy Bot", "Aim Silent", "Headshot",
+        "Auto Fire", "Auto Switch", "Cover Kill"
+    ],
+    WORLD: [
+        "Vehicle Name", "Vehicle Fuel", "Vehicle Health",
+        { action: "Login Server India" },
+        { action: "Reset Guest" },
+        "LootBox", "AirDrop Box", "Air Plane", "Radar Map"
+    ],
+    MEMORY: [
+        "No Recoil", "No Shake", "90 FPS",
+        "No Fog", "Fast Movement", "Fast Scope",
+        "Fast Switch", "Fast Shoot", "Speed Hack",
+        "Camera Height", "X-hit Effect"
+    ]
+};
+
+const STORAGE_KEY = "qolmod_state";
+const qm = document.getElementById("qm");
+const menu = document.getElementById("menu");
+const header = document.getElementById("header");
+const closeButton = document.getElementById("closeBtn");
+const container = document.getElementById("features");
+const tabsBox = document.getElementById("tabs");
+const title = document.getElementById("title");
+const toast = document.getElementById("toast");
+
+let enabledFeatures = {};
+try { enabledFeatures = JSON.parse(localStorage.getItem(STORAGE_KEY)) || {}; } catch (e) {}
+
+function saveState() {
+    try { localStorage.setItem(STORAGE_KEY, JSON.stringify(enabledFeatures)); } catch (e) {}
+}
+
+let toastTimer;
+function showToast(text) {
+    toast.innerText = text;
+    toast.classList.add("show");
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove("show"), 1500);
+}
+
+// Tab kategori
+Object.keys(categories).forEach(category => {
+    const tab = document.createElement("button");
+    tab.innerText = category;
+    tab.className = "toggle tab";
+    tab.dataset.category = category;
+    tab.onclick = () => showCategory(category);
+    tabsBox.appendChild(tab);
+});
+
+function showCategory(category) {
+    container.innerHTML = "";
+    title.innerText = category;
+
+    categories[category].forEach(item => {
+        const button = document.createElement("button");
+
+        if (typeof item === "object") {
+            button.className = "toggle action";
+            button.innerText = item.action;
+            button.onclick = () => showToast(item.action + " berhasil!");
+            container.appendChild(button);
+            return;
+        }
+
+        const feature = item;
+        const active = !!enabledFeatures[feature];
+        button.className = "toggle" + (active ? " active" : "");
+        button.innerText = feature + ": " + (active ? "ON" : "OFF");
+
+        button.onclick = () => {
+            const newState = !enabledFeatures[feature];
+
+            if (category === "RAGEBOT" && feature === "Enable All") {
+                categories.RAGEBOT.forEach(name => { enabledFeatures[name] = newState; });
+            } else {
+                enabledFeatures[feature] = newState;
+                if (category === "RAGEBOT") {
+                    enabledFeatures["Enable All"] = categories.RAGEBOT
+                        .filter(name => name !== "Enable All")
+                        .every(name => enabledFeatures[name]);
+                }
+            }
+
+            saveState();
+            showCategory(category);
+        };
+
+        container.appendChild(button);
+    });
+
+    document.querySelectorAll(".tab").forEach(tab => {
+        tab.classList.toggle("active", tab.dataset.category === category);
+    });
+}
+
+// Buka / tutup: ukuran jendela Android ikut berubah
+function setExpanded(expanded) {
+    bridge.setExpanded(expanded);
+    menu.hidden = !expanded;
+    qm.hidden = expanded;
+}
+
+closeButton.onclick = () => setExpanded(false);
+
+// Drag: kirim selisih gerakan jari ke Android, yang menggeser jendelanya
+function makeDraggable(el, onTap) {
+    let last = null, startX = 0, startY = 0, moved = false;
+
+    el.addEventListener("pointerdown", e => {
+        if (e.target === closeButton) return;
+        last = { x: e.screenX, y: e.screenY };
+        startX = e.screenX;
+        startY = e.screenY;
+        moved = false;
+        el.setPointerCapture(e.pointerId);
+    });
+
+    el.addEventListener("pointermove", e => {
+        if (!last) return;
+        if (!moved && Math.abs(e.screenX - startX) < 6 && Math.abs(e.screenY - startY) < 6) return;
+        moved = true;
+        bridge.moveBy(e.screenX - last.x, e.screenY - last.y);
+        last = { x: e.screenX, y: e.screenY };
+    });
+
+    el.addEventListener("pointerup", () => {
+        if (last && !moved && onTap) onTap();
+        last = null;
+    });
+
+    el.addEventListener("pointercancel", () => { last = null; });
+}
+
+makeDraggable(header);
+makeDraggable(qm, () => setExpanded(true));
+
+showCategory("VISUAL");
+</script>
+</body>
+</html>
